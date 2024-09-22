@@ -1,0 +1,107 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import signal
+from scipy.fft import fft
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+# Load EEG data from CSV
+def load_data(filepath):
+    data = pd.read_csv(filepath)
+    return data
+
+# Filter EEG data into specific frequency bands (delta, theta, alpha, beta, gamma)
+def filter_data(eeg_data, fs=256):
+    bands = {
+        'delta': (0.5, 4),
+        'theta': (4, 8),
+        'alpha': (8, 13),
+        'beta': (13, 30),
+        'gamma': (30, 50)
+    }
+    
+    filtered_data = {}
+    for band, (low, high) in bands.items():
+        sos = signal.butter(4, [low / (fs / 2), high / (fs / 2)], btype='bandpass', output='sos')
+        filtered_data[band] = signal.sosfilt(sos, eeg_data, axis=0)
+    
+    return filtered_data
+
+# Compute power spectral density for each frequency band
+def compute_psd(filtered_data, fs=256):
+    psd_data = {}
+    for band, data in filtered_data.items():
+        freqs, psd = signal.welch(data, fs, nperseg=1024)
+        psd_data[band] = (freqs, psd)
+    return psd_data
+
+# Visualize power spectral density (PSD)
+def visualize_psd(psd_data):
+    plt.figure(figsize=(12, 8))
+    for band, (freqs, psd) in psd_data.items():
+        plt.semilogy(freqs, np.mean(psd, axis=1), label=f'{band.capitalize()} band')
+    
+    plt.title('Power Spectral Density (PSD) for Each Frequency Band')
+    plt.xlabel('Frequency (Hz)')
+    plt.ylabel('PSD (V^2/Hz)')
+    plt.legend()
+    plt.show()
+
+# Perform Principal Component Analysis (PCA) for dimensionality reduction
+def perform_pca(eeg_data):
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(eeg_data)
+    pca = PCA(n_components=2)
+    pca_data = pca.fit_transform(scaled_data)
+    
+    plt.figure(figsize=(8, 6))
+    plt.scatter(pca_data[:, 0], pca_data[:, 1], alpha=0.5)
+    plt.title('PCA of EEG Data')
+    plt.xlabel('Principal Component 1')
+    plt.ylabel('Principal Component 2')
+    plt.show()
+    
+    return pca_data
+
+# Train machine learning model (Random Forest) to classify schizophrenia patients
+def train_model(eeg_data, labels):
+    X_train, X_test, y_train, y_test = train_test_split(eeg_data, labels, test_size=0.3, random_state=42)
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    
+    y_pred = model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    cm = confusion_matrix(y_test, y_pred)
+    
+    print(f"Accuracy: {accuracy * 100:.2f}%")
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+    plt.title('Confusion Matrix')
+    plt.show()
+
+# Main function to run the analysis
+def main(filepath):
+    # Step 1: Load EEG data
+    eeg_data = load_data(filepath)
+    
+    # Step 2: Filter the data into frequency bands
+    filtered_data = filter_data(eeg_data.values)
+    
+    # Step 3: Compute and visualize power spectral density (PSD)
+    psd_data = compute_psd(filtered_data)
+    visualize_psd(psd_data)
+    
+    # Step 4: Perform PCA to reduce dimensionality
+    pca_data = perform_pca(eeg_data.values)
+    
+    # Step 5: Assuming binary labels for classification (0 = control, 1 = schizophrenia)
+    labels = eeg_data['label']  # Assuming the 'label' column has control/schizophrenia labels
+    train_model(pca_data, labels)
+
+# Example usage:
+# main('eeg_data.csv')
+
